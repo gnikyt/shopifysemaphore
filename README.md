@@ -23,7 +23,7 @@ package main
 
 import ssem "github.com/gniktr/shopifysemaphore"
 
-func work(id int, wg *sync.WaitGroup, ctx context.Context, sem *shopifysemaphore.Semaphore) {
+func work(id int, wg *sync.WaitGroup, ctx context.Context, sem *ssem.Semaphore) {
   err := sem.Aquire(ctx)
   if err != nil {
     // Context timeout.
