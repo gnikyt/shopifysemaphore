@@ -1,6 +1,6 @@
 # Shopify Semaphore
 
-A service to assist with running Goroutines aginst limits of Shopify's GraphQL API. This service will "pause" running Goroutines if the configured API thresholds for point balance has been reached, pausing for a calculated duration, allowing for the point balance to refill completely before resuming.
+A service to assist with running Goroutines against limits of Shopify's GraphQL API. This service will "pause" running Goroutines if the configured API thresholds for point balance has been reached, pausing for a calculated duration, allowing for the point balance to refill completely before resuming.
 
 ## Installation
 
