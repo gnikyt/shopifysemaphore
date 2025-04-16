@@ -66,10 +66,10 @@ func main() {
   }
 
   // Wait for completion of Goroutines.
-	go func() {
-		wg.Wait()
-		done <- true
-	}()
+  go func() {
+    wg.Wait()
+    done <- true
+  }()
 
   select {
     case <-ctx.Done():
