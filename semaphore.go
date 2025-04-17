@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	DefaultAquireBuffer = 200 * time.Millisecond
-	DefaultPauseBuffer  = 1 * time.Second
+	DefaultAquireBuffer = 200 * time.Millisecond // Default aquire throttle duration.
+	DefaultPauseBuffer  = 1 * time.Second        // Default pause buffer to append to pause duration calculation.
 )
 
 // Semaphore is responsible regulating when to pause and resume processing of Goroutines.

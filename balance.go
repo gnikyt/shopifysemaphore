@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// ErrPts is the points value to pass in if a network or other error happens.
+// Essentially to be used for situations where no response containing point
+// information was returned. This is used to know if the Update method should
+// actually update the remaining point balance or not.
+var ErrPts int32 = -1
+
 // Balance represents the information of point values and keeps track of
 // items such as the remaining points, threshold, limit, and refill rate.
 type Balance struct {
@@ -28,7 +34,9 @@ func NewBalance(thld int32, max int32, rr int32) *Balance {
 
 // Update accepts a new value of remaining points to store.
 func (b *Balance) Update(points int32) {
-	b.Remaining.Store(points)
+	if points > ErrPts {
+		b.Remaining.Store(points)
+	}
 }
 
 // RefillDuration accounts for the remaining points, the limit, and the refill rate to

@@ -68,3 +68,21 @@ func TestNewBalance(t *testing.T) {
 		t.Errorf("Balance.Remaining = %d; want %d", b.Remaining.Load(), limit)
 	}
 }
+
+// TestUpdate should ensure we only update points above a value of ErrPts.
+func TestUpdate(t *testing.T) {
+	b := newBalance()
+	b.Update(500)
+
+	var expts int32 = 500
+	rpts := b.Remaining.Load()
+	if rpts != expts {
+		t.Errorf("Balance.Remaining = %d; want %d", rpts, expts)
+	}
+
+	b.Update(ErrPts)
+	rpts = b.Remaining.Load()
+	if rpts != expts {
+		t.Errorf("Balance.Remaining = %d; want %d", rpts, expts)
+	}
+}

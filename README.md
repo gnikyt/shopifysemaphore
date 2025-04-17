@@ -12,35 +12,49 @@ No external dependencies for this package.
 
 Create a new Semaphore instance by supplying the capacity of the number of Goroutines you wish to run concurrently and information about the GraphQL point balance.
 
-`Aquire(ctx context.Context)` accepts a context which will return an error, if one has happened such as a context timeout.
+The two key methods are:
 
-`Release(pts int32)` accepts an integer representing the remaining point balance returned by Shopify's GraphQL API response.
+* `Aquire(ctx context.Context)` which accepts a context which will return an error, if one has happened (such as a context timeout).
+* `Release(pts int32)` which accepts an integer representing the remaining point balance returned by Shopify's GraphQL API response.
 
 Example usage:
 
 ```go
 package main
 
-import ssem "github.com/gniktr/shopifysemaphore"
+import (
+  "log"
+  ssem "github.com/gniktr/shopifysemaphore"
+)
 
 func work(id int, wg *sync.WaitGroup, ctx context.Context, sem *ssem.Semaphore) {
   err := sem.Aquire(ctx)
   if err != nil {
-    // Context timeout.
+    // Possible context timeout.
+    log.Printf("work: %w", err)
     wg.Done()
     return
   }
 
-  points, err := graphQLCall() // Return remaining points from call.
+  // Return remaining points from call.
+  points, err := graphQLCall()
   if err != nil {
-    // Handle error.
+    log.Printf("work: %w", err)
+
+    // If error is a network error or bad request for example, essentially
+    // any error which would cause the response to *not* return point information,
+    // then you should set the points to ErrPts to not trigger a point
+    // update in Balance.
+    points := ssem.ErrPts
   }
   fmt.Printf("remaining: %d points", points)
+
+  wg.Done()
   sem.Release(points)
 }
 
 func main() {
-  fmt.Println("started!")
+  log.Println("started!")
   done := make(chan bool)
   ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Minute)
 
@@ -51,10 +65,10 @@ func main() {
     10,
     ssem.NewBalance(200, 2000, 100),
     ssem.WithPauseFunc(func (pts int32, dur time.Duration) {
-      fmt.Printf("pausing for %s due to remaining points of %d...", dur, pts)
+      log.Printf("pausing for %s due to remaining points of %d...", dur, pts)
     }),
     ssem.WithResumeFunc(func () {
-      fmt.Println("resuming...")
+      log.Println("resuming...")
     })
   )
 
@@ -73,11 +87,11 @@ func main() {
 
   select {
     case <-ctx.Done():
-      fmt.Println("timeout happened.")
+      log.Println("timeout happened.")
     case <-done:
-      fmt.Println("work finished.")
+      log.Println("work finished.")
   }
-  fmt.Println("completed.")
+  log.Println("completed.")
 }
 ```
 
@@ -114,9 +128,15 @@ package shopifysemaphore // import "github.com/gnikyt/shopify-semaphore"
 VARIABLES
 
 var (
-	DefaultAquireBuffer = 200 * time.Millisecond
-	DefaultPauseBuffer  = 1 * time.Second
+        DefaultAquireBuffer = 200 * time.Millisecond // Default aquire throttle duration.
+        DefaultPauseBuffer  = 1 * time.Second        // Default pause buffer to append to pause duration calculation.
 )
+var ErrPts int32 = -1
+    ErrPts is the points value to pass in if a network or other error happens.
+    Essentially to be used for situations where no response containing point
+    information was returned. This is used to know if the Update method should
+    actually update the remaining point balance or not.
+
 
 FUNCTIONS
 
@@ -141,10 +161,10 @@ func WithResumeFunc(fn func()) func(*Semaphore)
 TYPES
 
 type Balance struct {
-	Remaining  atomic.Int32 // Point balance remaining.
-	Threshold  int32        // Minimum point balance where we would consider handling with a "pause".
-	Limit      int32        // Maximum points available.
-	RefillRate int32        // Number of points refilled per second.
+        Remaining  atomic.Int32 // Point balance remaining.
+        Threshold  int32        // Minimum point balance where we would consider handling with a "pause".
+        Limit      int32        // Maximum points available.
+        RefillRate int32        // Number of points refilled per second.
 }
     Balance represents the information of point values and keeps track of items
     such as the remaining points, threshold, limit, and refill rate.
@@ -167,14 +187,14 @@ func (b *Balance) Update(points int32)
     Update accepts a new value of remaining points to store.
 
 type Semaphore struct {
-	*Balance // Point information and tracking.
+        *Balance // Point information and tracking.
 
-	PauseFunc    func(int32, time.Duration) // Optional callback for when pause happens.
-	ResumeFunc   func()                     // Optional callback for when resume happens.
-	PauseBuffer  time.Duration              // Buffer of time to wait before attempting to re-aquire a spot.
-	AquireBuffer time.Duration              // Buffer of time to extend the pause with.
+        PauseFunc    func(int32, time.Duration) // Optional callback for when pause happens.
+        ResumeFunc   func()                     // Optional callback for when resume happens.
+        PauseBuffer  time.Duration              // Buffer of time to wait before attempting to re-aquire a spot.
+        AquireBuffer time.Duration              // Buffer of time to extend the pause with.
 
-	// Has unexported fields.
+        // Has unexported fields.
 }
     Semaphore is responsible regulating when to pause and resume processing
     of Goroutines. Points remaining, point thresholds, and point refill rates
