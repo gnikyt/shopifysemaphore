@@ -124,7 +124,7 @@ func TestAquireCtxErr(t *testing.T) {
 			}
 
 			// Make work "long", longer than the context timeout.
-			time.Sleep(ctxo * 3)
+			time.Sleep(ctxo * 4)
 
 			wg.Done()
 			sema.Release(1000)
