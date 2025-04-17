@@ -1,9 +1,8 @@
 package shopifysemaphore
 
-// TODO: Test methods can be 100% improved, but unable to at the moment.
-
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -13,125 +12,127 @@ func newSemaphore(cap int, opts ...func(*Semaphore)) *Semaphore {
 	return NewSemaphore(cap, NewBalance(900, 1000, 100), opts...)
 }
 
-func TestAquireOfOneCapacity(t *testing.T) {
+// TestAquire should run N Goroutines. Allowing them
+// to aquire and release their spot. We are expecting no error to happen
+// and for the count (cnt) to match the number of Goroutines N.
+func TestAquire(t *testing.T) {
 	var err error
-	var cnt int
 	var wg sync.WaitGroup
-	wg.Add(2)
+	var cnt int // Count of Gorotunes which ran.
 
-	dur := 500 * time.Millisecond
-	ctx, cn := context.WithTimeout(context.Background(), dur)
-	defer cn()
+	cap := 1 // Capacity.
+	n := 2   // Number of Goroutines to spin up.
 
-	sema := newSemaphore(1)
-	for i := 0; i < 2; i += 1 {
+	ctx := context.Background()
+	sema := newSemaphore(cap)
+	for i := 0; i < n; i += 1 {
+		wg.Add(1)
 		go func() {
 			err = sema.Aquire(ctx)
 			if err != nil {
-				// Timeout happened.
 				wg.Done()
 				return
 			}
 
-			// Increase aquired count.
 			cnt += 1
-			// Fake work.
-			time.Sleep(dur / 10)
 
-			sema.Release(1000)
 			wg.Done()
+			sema.Release(1000)
 		}()
 	}
 	wg.Wait()
 
-	if cnt != 2 {
-		t.Errorf("aquire count = %d; want 2", cnt)
+	if cnt != n {
+		t.Errorf("cnt = %d; want %d", cnt, n)
 	}
 	if err != nil {
-		t.Errorf("err = %v; want nil", err)
+		t.Errorf("Aquire(%q) = %v; want nil", ctx, err)
 	}
 }
 
-func TestAquireOfOneCapacityWithLongWork(t *testing.T) {
-	var err error
-	var cnt int
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	dur := 200 * time.Millisecond
-	ctx, cn := context.WithTimeout(context.Background(), dur)
-	defer cn()
-
-	sema := newSemaphore(1)
-	for i := 0; i < 2; i += 1 {
-		go func() {
-			err = sema.Aquire(ctx)
-			if err != nil {
-				// Timeout happened.
-				wg.Done()
-				return
-			}
-
-			// Increase aquired count.
-			cnt += 1
-			// Fake long work.
-			time.Sleep(dur * 4)
-
-			sema.Release(1000)
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-
-	if cnt != 1 {
-		t.Errorf("aquire count = %d; want 1", cnt)
-	}
-	if err == nil {
-		t.Errorf("err = %v; want error", err)
-	}
-}
-
+// TestReleaseCausesPauseAndResume should create a situation where
+// Release triggers a pause to happen due to hitting a threshold.
 func TestReleaseCausesPauseAndResume(t *testing.T) {
-	var cnt int
 	var err error
-	var res bool
 	var wg sync.WaitGroup
-	wg.Add(2)
+	var cnt int // Count of Gorotunes which ran.
 
-	sema := newSemaphore(1, WithPauseFunc(func(i int32, d time.Duration) {
-		if i != 900 || d.String() != "1s" {
-			t.Errorf("PauseFunc(%d, %s); want PauseFunc(900, 1s)", i, d)
+	cap := 1                 // Capacity.
+	n := 2                   // Number of Goroutines to spin up.
+	res := false             // If resume happened.
+	exdur := 1 * time.Second // Expected duration of pause.
+	var expts int32 = 900    // Expected points at pause.
+
+	ctx := context.Background()
+	sema := newSemaphore(cap, WithPauseFunc(func(pts int32, dur time.Duration) {
+		if pts != expts || dur != exdur {
+			t.Errorf("PauseFunc(%d, %q); want PauseFunc(%d, %q)", pts, dur, expts, exdur)
 		}
 	}), WithResumeFunc(func() {
 		res = true
 	}))
 
-	for i := 0; i < 2; i += 1 {
+	for i := 0; i < n; i += 1 {
+		wg.Add(1)
 		go func() {
-			err = sema.Aquire(context.Background())
+			err = sema.Aquire(ctx)
 			if err != nil {
 				wg.Done()
 				return
 			}
 
-			// Increase aquired count.
 			cnt += 1
-			// Fake work.
-			time.Sleep(50 * time.Millisecond)
 
-			sema.Release(900)
 			wg.Done()
+			sema.Release(expts)
 		}()
 	}
 	wg.Wait()
 
 	if cnt != 2 {
-		t.Errorf("aquire count = %d; want 2", cnt)
+		t.Errorf("cnt = %d; want %d", cnt, n)
 	}
 	if err != nil {
 		t.Errorf("err = %v; want nil", err)
 	}
 	if res == false {
 		t.Errorf("res = %v; want true", res)
+	}
+}
+
+// TestAquireCtxErr should detect a context error on attempting
+// to aquire a spot.
+func TestAquireCtxErr(t *testing.T) {
+	var err error
+	var wg sync.WaitGroup
+
+	cap := 1                      // Capacity.
+	n := 2                        // Number of Goroutines to spin up.
+	ctxo := 50 * time.Millisecond // Context timeout duration.
+
+	ctx, cancel := context.WithTimeout(context.Background(), ctxo)
+	defer cancel()
+
+	sema := newSemaphore(cap)
+	for i := 0; i < n; i += 1 {
+		wg.Add(1)
+		go func() {
+			err = sema.Aquire(ctx)
+			if err != nil {
+				wg.Done()
+				return
+			}
+
+			// Make work "long", longer than the context timeout.
+			time.Sleep(ctxo * 3)
+
+			wg.Done()
+			sema.Release(1000)
+		}()
+	}
+	wg.Wait()
+
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v; want %v", err, context.DeadlineExceeded)
 	}
 }
